@@ -4,7 +4,7 @@ nextflow.enable.dsl = 2
 
 params.pipelinebot_repo = "https://github.com/huimingd/PipelineBot.git"
 params.pipelinebot_revision = "main"
-params.config_file = null
+params.config_file = "/home/cloud/myhome/sourcecode/PipelineBot_test/alignment_bwa.yaml"
 params.output_dir = "results"
 params.log_level = "INFO"
 params.use_slurm = false
@@ -18,22 +18,22 @@ params.slurm_work_dir = "/tmp/pipeline_slurm"
 params.slurm_python = "python"
 params.slurm_poll_interval = 10
 
-process CLONE_PIPELINEBOT {
-    conda "conda-forge::git=2.40.1"
-    
+process DOWNLOAD_PIPELINEBOT {
     output:
     path "PipelineBot", emit: repo_dir
     
     script:
     """
+    #curl -L https://github.com/huimingd/PipelineBot/archive/${params.pipelinebot_revision}.tar.gz | tar -xz
+    #mv PipelineBot-${params.pipelinebot_revision} PipelineBot
     git clone ${params.pipelinebot_repo} PipelineBot
     cd PipelineBot
     git checkout ${params.pipelinebot_revision}
     """
 }
 
-process SETUP_ENVIRONMENT {
-    conda "conda-forge::python=3.12 conda-forge::pip=23.1.2"
+process SETUP_UV_ENVIRONMENT {
+    // No conda - assumes uv is available on the system
     
     input:
     path repo_dir
@@ -45,38 +45,17 @@ process SETUP_ENVIRONMENT {
     """
     cd ${repo_dir}
     
-    # Install Python dependencies
-    pip install psutil>=7.2.2 pyyaml>=6.0.3
+    # Install dependencies using system uv
+    uv sync --locked
     
-    # Install the package in development mode if setup.py exists
-    if [ -f setup.py ]; then
-        pip install -e .
-    fi
-    """
-}
-
-process CREATE_CONFIG {
-    input:
-    path repo_dir
-    path config_file
-    
-    output:
-    path "pipeline_config.yaml", emit: config
-    
-    script:
-    def config_source = config_file.name != 'NO_FILE' ? config_file : "${repo_dir}/src/resource_executor/examples/pipeline_bioinformatics.yaml"
-    """
-    # Use provided config file or default from repository
-    cp ${config_source} pipeline_config.yaml
-    
-    # Optionally modify config based on parameters
-    # This is where you could add logic to customize the YAML config
-    # based on Nextflow parameters
+    # Verify the installation
+    uv run python --version
+    uv run python -c "import psutil, yaml; print('Dependencies installed successfully')"
     """
 }
 
 process RUN_PIPELINEBOT {
-    conda "conda-forge::python=3.12 conda-forge::pip=23.1.2"
+    //conda "conda-forge::uv=0.4.18"
     
     publishDir "${params.output_dir}", mode: 'copy'
     
@@ -92,18 +71,16 @@ process RUN_PIPELINEBOT {
     
     script:
     def slurm_args = params.use_slurm ? buildSlurmArgs() : ""
+    def config_arg = config_file.name != 'NO_FILE' ? "--config ${config_file}" : "--config src/resource_executor/examples/pipeline_bioinformatics.yaml"
     """
     cd ${repo_dir}
     
-    # Set up Python path
-    export PYTHONPATH="\${PWD}/src:\${PWD}/src/resource_executor/examples:\${PWD}/src/tasks:\${PYTHONPATH:-}"
+    # Ensure uv environment is synced
+    uv sync --locked
     
-    # Install dependencies
-    pip install psutil>=7.2.2 pyyaml>=6.0.3
-    
-    # Run the pipeline
-    python main.py \\
-        --config ${config_file} \\
+    # Run the pipeline using uv
+    uv run python main.py \\
+        ${config_arg} \\
         --output pipeline_results.json \\
         --log pipeline.log \\
         --log-level ${params.log_level} \\
@@ -128,23 +105,29 @@ def buildSlurmArgs() {
     return args.join(" ")
 }
 
-workflow {
-    // Clone the PipelineBot repository
-    CLONE_PIPELINEBOT()
-    
-    // Set up the Python environment
-    SETUP_ENVIRONMENT(CLONE_PIPELINEBOT.out.repo_dir)
-    
-    // Create or use provided config file
-    config_ch = params.config_file ? 
-        Channel.fromPath(params.config_file, checkIfExists: true) : 
-        Channel.fromPath("NO_FILE")
-    
-    CREATE_CONFIG(SETUP_ENVIRONMENT.out.setup_repo, config_ch)
-    
-    // Run the PipelineBot main.py
+workflow PIPELINEBOT {
+    take:
+    config_file
+
+    main:
+    // Download the PipelineBot repository
+    DOWNLOAD_PIPELINEBOT()
+
+    // Set up the uv environment with locked dependencies
+    SETUP_UV_ENVIRONMENT(DOWNLOAD_PIPELINEBOT.out.repo_dir)
+
+    // Run the PipelineBot main.py using uv
     RUN_PIPELINEBOT(
-        SETUP_ENVIRONMENT.out.setup_repo,
-        CREATE_CONFIG.out.config
+        SETUP_UV_ENVIRONMENT.out.setup_repo,
+        config_file
     )
+}
+
+workflow {
+    // Handle config file - create channel with actual file or placeholder
+    config_ch = params.config_file ?
+        Channel.fromPath(params.config_file, checkIfExists: true) :
+        Channel.fromPath("NO_FILE")
+
+    PIPELINEBOT(config_ch)
 }
