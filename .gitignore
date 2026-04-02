@@ -1,0 +1,14 @@
+*.pyc
+*.pyo
+*.db
+.DS_Store
+.coverage
+.nextflow*.*
+
+
+
+/work
+/results
+.nextflow/
+.venv/
+__pycache__/
