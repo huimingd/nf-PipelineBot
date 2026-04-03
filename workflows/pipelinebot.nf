@@ -14,5 +14,5 @@ workflow PIPELINEBOT {
     
     emit:
     results = RUN_PIPELINEBOT.out.results
-    log = RUN_PIPELINEBOT.out.log
+    log_file = RUN_PIPELINEBOT.out.log_file
 }

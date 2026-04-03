@@ -8,7 +8,7 @@ process RUN_PIPELINEBOT {
     
     output:
     path "pipeline_results.json", emit: results
-    path "pipeline.log", emit: log
+    path "pipeline.log", emit: log_file
     path "*.json", optional: true
     path "*.log", optional: true
     
@@ -16,12 +16,14 @@ process RUN_PIPELINEBOT {
     def slurm_args = params.use_slurm ? buildSlurmArgs() : ""
     def config_file_cmd = params.config_file ? 
         "cp '${params.config_file}' ./pipeline_config.yaml && config_file='./pipeline_config.yaml'" : 
-        "config_file='src/resource_executor/examples/pipeline_bioinformatics.yaml'"    """
+        "config_file='src/resource_executor/examples/pipeline_bioinformatics.yaml'"
+    """
+    WORK_DIR=\$(pwd)
     cd ${repo_dir}
-    
+
     # Ensure uv environment is synced
     uv sync --locked
-    
+
     # Handle config file (logic moved to Groovy above)
     ${config_file_cmd}
 
@@ -32,8 +34,8 @@ process RUN_PIPELINEBOT {
     # Run the pipeline using uv
     uv run python main.py \\
         --config \$config_file \\
-        --output pipeline_results.json \\
-        --log pipeline.log \\
+        --output \${WORK_DIR}/pipeline_results.json \\
+        --log \${WORK_DIR}/pipeline.log \\
         --log-level ${params.log_level} \\
         ${slurm_args}
     """
