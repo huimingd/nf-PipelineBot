@@ -2,7 +2,7 @@
 
 A Nextflow wrapper for [PipelineBot](https://github.com/huimingd/PipelineBot) — a Python framework for executing tasks with comprehensive resource monitoring and management.
 
-This workflow automatically clones PipelineBot, sets up its `uv` environment, and runs it via Nextflow's workflow management layer, giving you reproducibility, resource handling, and optional SLURM integration with no changes to PipelineBot itself.
+This workflow automatically clones PipelineBot, sets up its `uv` environment, and runs it via Nextflow, giving you reproducibility, resource handling, and optional SLURM integration with no changes to PipelineBot itself.
 
 ## Features
 
@@ -24,25 +24,25 @@ This workflow automatically clones PipelineBot, sets up its `uv` environment, an
 ### Basic (local execution, default config)
 
 ```bash
-nextflow run main_single.nf
+nextflow run main.nf
 ```
 
 ### With a custom config file
 
 ```bash
-nextflow run main_single.nf --config_file /path/to/your/config.yaml
+nextflow run main.nf --config_file /path/to/your/config.yaml
 ```
 
 ### With a specific PipelineBot branch or tag
 
 ```bash
-nextflow run main_single.nf --pipelinebot_revision develop
+nextflow run main.nf --pipelinebot_revision develop
 ```
 
 ### SLURM execution
 
 ```bash
-nextflow run main_single.nf \
+nextflow run main.nf \
     --use_slurm true \
     --slurm_partition compute \
     --slurm_account myproject \
@@ -64,15 +64,15 @@ nextflow run main_single.nf \
 | `slurm_account` | `null` | SLURM project account |
 | `slurm_time_limit` | `04:00:00` | Wall-clock limit per job |
 | `slurm_mem_gb` | `null` | Memory per job (GB) |
-| `slurm_nodes` | `null` | Nodes per job |
+| `slurm_nodes` | `null` | Nodes per node |
 | `slurm_ntasks_per_node` | `null` | MPI tasks per node |
-| `slurm_work_dir` | `/tmp/pipeline_slurm` | Shared dir for SLURM job scripts and logs |
+| `slurm_work_dir` | `/tmp/pipeline_slurm` | Shared directory for SLURM job scripts and logs |
 | `slurm_python` | `python` | Python binary on compute nodes |
 | `slurm_poll_interval` | `10` | Seconds between `squeue` polls |
 
 ## Pipeline Config YAML
 
-When `--config_file` is not provided, the workflow uses PipelineBot's built-in `src/resource_executor/examples/pipeline_bioinformatics.yaml`. To customise the pipeline, copy and edit that file:
+When `--config_file` is not provided, the workflow uses PipelineBot's built-in `src/resource_executor/examples/pipeline_bioinformatics.yaml`. To customize the pipeline, copy and edit that file:
 
 ```yaml
 tasks:
@@ -141,18 +141,10 @@ RUN_PIPELINEBOT        (uv run python main.py ...)
 
 | File | Description |
 |------|-------------|
-| `main_single.nf` | Self-contained single-file workflow (recommended for quick runs) |
 | `main.nf` | Modular entry point using `include` from `modules/` and `workflows/` |
+| `main_single.nf` | Self-contained single-file workflow |
 
-The modular version (`main.nf`) is functionally equivalent to `main_single.nf` and produces identical results, while offering better reusability and easier long-term maintenance through its split module structure.
-
-You can test the modular version with:
-
-```bash
-nextflow run main.nf --config_file /home/cloud/myhome/sourcecode/PipelineBot_test/alignment_bwa.yaml
-```
-
-This runs identically to the single-file version.
+Both entry points produce identical results. `main.nf` is the recommended entry point — its split module structure makes individual steps easier to reuse and maintain. `main_single.nf` is available as a self-contained alternative with no module dependencies.
 
 ## License
 
