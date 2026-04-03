@@ -1,45 +1,149 @@
-Usage Examples
-Basic Usage (Local Execution)
+# nf-PipelineBot
 
-nextflow run main.nf
+A Nextflow wrapper for [PipelineBot](https://github.com/huimingd/PipelineBot) — a Python framework for executing tasks with comprehensive resource monitoring and management.
 
-With Custom Config File
+This workflow automatically clones PipelineBot, sets up its `uv` environment, and runs it via Nextflow's workflow management layer, giving you reproducibility, resource handling, and optional SLURM integration with no changes to PipelineBot itself.
 
-nextflow run main.nf --config_file /path/to/your/config.yaml
+## Features
 
-With SLURM Execution
+- **Automatic Repository Cloning** — Clones PipelineBot at a specified branch or tag at runtime
+- **Reproducible Environment** — Sets up the locked `uv` environment from PipelineBot's `uv.lock`
+- **Flexible Configuration** — Accepts a custom YAML config or falls back to the default bioinformatics pipeline config
+- **SLURM Pass-through** — Forwards all SLURM parameters to PipelineBot's `main.py --slurm` flags
+- **Output Management** — Publishes `pipeline_results.json` and `pipeline.log` to the specified output directory
+- **Modular Design** — Core steps are split into reusable modules under `modules/`
 
-nextflow run main.nf \
+## Requirements
+
+- [Nextflow](https://www.nextflow.io/) ≥ 23.04
+- [uv](https://github.com/astral-sh/uv) available on `$PATH` (or via conda)
+- Git
+
+## Usage
+
+### Basic (local execution, default config)
+
+```bash
+nextflow run main_single.nf
+```
+
+### With a custom config file
+
+```bash
+nextflow run main_single.nf --config_file /path/to/your/config.yaml
+```
+
+### With a specific PipelineBot branch or tag
+
+```bash
+nextflow run main_single.nf --pipelinebot_revision develop
+```
+
+### SLURM execution
+
+```bash
+nextflow run main_single.nf \
     --use_slurm true \
     --slurm_partition compute \
     --slurm_account myproject \
     --slurm_time_limit "08:00:00" \
     --slurm_mem_gb 32
-	
-With Custom Repository Branch
+```
 
-nextflow run main.nf --pipelinebot_revision develop
+## Parameters
 
-Usage:
-# With your custom config file
-nextflow run main_single.nf --config_file "/home/cloud/myhome/sourcecode/PipelineBot_test/alignment_bwa.yaml"
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `pipelinebot_repo` | `https://github.com/huimingd/PipelineBot.git` | PipelineBot repository URL |
+| `pipelinebot_revision` | `main` | Branch, tag, or commit to check out |
+| `config_file` | `null` | Path to a YAML pipeline config; uses PipelineBot's default if not set |
+| `output_dir` | `results` | Directory for published outputs |
+| `log_level` | `INFO` | Logging level passed to `main.py` |
+| `use_slurm` | `false` | Enable SLURM execution inside PipelineBot |
+| `slurm_partition` | `null` | SLURM partition/queue |
+| `slurm_account` | `null` | SLURM project account |
+| `slurm_time_limit` | `04:00:00` | Wall-clock limit per job |
+| `slurm_mem_gb` | `null` | Memory per job (GB) |
+| `slurm_nodes` | `null` | Nodes per job |
+| `slurm_ntasks_per_node` | `null` | MPI tasks per node |
+| `slurm_work_dir` | `/tmp/pipeline_slurm` | Shared dir for SLURM job scripts and logs |
+| `slurm_python` | `python` | Python binary on compute nodes |
+| `slurm_poll_interval` | `10` | Seconds between `squeue` polls |
 
-# With default config
-nextflow run main_single.nf
+## Pipeline Config YAML
 
-# Using modular version
-nextflow run main.nf --config_file "/path/to/your/config.yaml"
+When `--config_file` is not provided, the workflow uses PipelineBot's built-in `src/resource_executor/examples/pipeline_bioinformatics.yaml`. To customise the pipeline, copy and edit that file:
 
-The main issue was the channel creation for the dummy file and the hard-coded config path. These fixes should resolve the parameter passing problem you were experiencing.
+```yaml
+tasks:
+  - alignment
+  - variant_calling
+  - rna_seq
 
-Key Features
+executor:
+  reference_genome: reference_genome.fa
+  annotation_file: annotations.gtf
+  output_dir: bioinformatics_results
 
-    Automatic Repository Cloning: The workflow clones your PipelineBot repository automatically
-    Environment Setup: Installs all required Python dependencies using conda
-    Flexible Configuration: Supports custom YAML config files or uses the default
-    SLURM Support: Passes through all SLURM parameters to your main.py script
-    Output Management: Publishes results and logs to the specified output directory
-    Wave Integration: Uses Wave for environment caching and reproducibility
+alignment:
+  resource_config:
+    cpus: 4
+    memory_gb: 8.0
+    max_processes: 2
+    timeout_seconds: 1800
+  fastq_files:
+    - sample1.fastq
+    - sample2.fastq
+  aligner: bwa
+  threads_per_sample: 4
 
-This Nextflow wrapper provides a clean interface to run your PipelineBot while leveraging Nextflow's workflow management capabilities, resource handling, and reproducibility features.
+variant_calling:
+  resource_config:
+    cpus: 8
+    memory_gb: 16.0
+  caller: gatk
 
+rna_seq:
+  resource_config:
+    cpus: 6
+    memory_gb: 12.0
+  quantification_method: salmon
+```
+
+See the [PipelineBot README](https://github.com/huimingd/PipelineBot) for the full YAML reference and all supported tasks.
+
+## Workflow Structure
+
+```
+DOWNLOAD_PIPELINEBOT
+        │
+        ▼
+SETUP_UV_ENVIRONMENT   (uv sync --locked)
+        │
+        ▼
+RUN_PIPELINEBOT        (uv run python main.py ...)
+        │
+        ▼
+  results/
+  ├── pipeline_results.json
+  └── pipeline.log
+```
+
+### Modules
+
+| Module | Description |
+|--------|-------------|
+| `modules/download_pipelinebot.nf` | Clones the PipelineBot repo at the specified revision |
+| `modules/setup_uv_environment.nf` | Runs `uv sync --locked` to install locked dependencies |
+| `modules/run_pipelinebot.nf` | Executes `uv run python main.py` with all parameters |
+
+## Entry Points
+
+| File | Description |
+|------|-------------|
+| `main_single.nf` | Self-contained single-file workflow (recommended) |
+| `main.nf` | Modular entry point using `include` from `modules/` and `workflows/` |
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
