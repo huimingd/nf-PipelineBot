@@ -1,11 +1,10 @@
 process RUN_PIPELINEBOT {
-    conda "conda-forge::uv=0.4.18"
+    //conda "conda-forge::uv=0.4.18"
     
     publishDir "${params.output_dir}", mode: 'copy'
     
     input:
     path repo_dir
-    path config_file
     
     output:
     path "pipeline_results.json", emit: results
@@ -15,20 +14,24 @@ process RUN_PIPELINEBOT {
     
     script:
     def slurm_args = params.use_slurm ? buildSlurmArgs() : ""
-    def config_path = config_file.name != 'NO_FILE' ? config_file : "src/resource_executor/examples/pipeline_bioinformatics.yaml"
-    """
+    def config_file_cmd = params.config_file ? 
+        "cp '${params.config_file}' ./pipeline_config.yaml && config_file='./pipeline_config.yaml'" : 
+        "config_file='src/resource_executor/examples/pipeline_bioinformatics.yaml'"    """
     cd ${repo_dir}
     
     # Ensure uv environment is synced
     uv sync --locked
     
+    # Handle config file (logic moved to Groovy above)
+    ${config_file_cmd}
+
     # Debug: Show what config file we're using
-    echo "Using config file: ${config_path}"
-    ls -la ${config_path} || echo "Config file not found at ${config_path}"
+    echo "Using config file: \$config_file"
+    ls -la \$config_file || echo "Config file not found at \$config_file"
     
     # Run the pipeline using uv
     uv run python main.py \\
-        --config ${config_path} \\
+        --config \$config_file \\
         --output pipeline_results.json \\
         --log pipeline.log \\
         --log-level ${params.log_level} \\

@@ -1,5 +1,5 @@
 process SETUP_UV_ENVIRONMENT {
-    conda "conda-forge::uv=0.4.18"
+    // conda "conda-forge::uv=0.4.18"
     
     input:
     path repo_dir

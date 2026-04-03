@@ -141,8 +141,18 @@ RUN_PIPELINEBOT        (uv run python main.py ...)
 
 | File | Description |
 |------|-------------|
-| `main_single.nf` | Self-contained single-file workflow (recommended) |
+| `main_single.nf` | Self-contained single-file workflow (recommended for quick runs) |
 | `main.nf` | Modular entry point using `include` from `modules/` and `workflows/` |
+
+The modular version (`main.nf`) is functionally equivalent to `main_single.nf` and produces identical results, while offering better reusability and easier long-term maintenance through its split module structure.
+
+You can test the modular version with:
+
+```bash
+nextflow run main.nf --config_file /home/cloud/myhome/sourcecode/PipelineBot_test/alignment_bwa.yaml
+```
+
+This runs identically to the single-file version.
 
 ## License
 

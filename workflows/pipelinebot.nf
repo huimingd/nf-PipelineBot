@@ -9,18 +9,8 @@ workflow PIPELINEBOT {
     // Set up the uv environment with locked dependencies
     SETUP_UV_ENVIRONMENT(DOWNLOAD_PIPELINEBOT.out.repo_dir)
     
-    // Handle config file properly
-    if (params.config_file) {
-        config_ch = Channel.fromPath(params.config_file, checkIfExists: true)
-    } else {
-        config_ch = Channel.value(file('NO_FILE'))
-    }
-    
-    // Run the PipelineBot main.py using uv
-    RUN_PIPELINEBOT(
-        SETUP_UV_ENVIRONMENT.out.setup_repo,
-        config_ch
-    )
+    // Run the PipelineBot main.py using uv (no config file input needed)
+    RUN_PIPELINEBOT(SETUP_UV_ENVIRONMENT.out.setup_repo)
     
     emit:
     results = RUN_PIPELINEBOT.out.results
