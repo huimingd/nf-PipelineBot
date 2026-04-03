@@ -20,6 +20,18 @@ With Custom Repository Branch
 
 nextflow run main.nf --pipelinebot_revision develop
 
+Usage:
+# With your custom config file
+nextflow run main_single.nf --config_file "/home/cloud/myhome/sourcecode/PipelineBot_test/alignment_bwa.yaml"
+
+# With default config
+nextflow run main_single.nf
+
+# Using modular version
+nextflow run main.nf --config_file "/path/to/your/config.yaml"
+
+The main issue was the channel creation for the dummy file and the hard-coded config path. These fixes should resolve the parameter passing problem you were experiencing.
+
 Key Features
 
     Automatic Repository Cloning: The workflow clones your PipelineBot repository automatically

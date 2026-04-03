@@ -1,5 +1,5 @@
 process RUN_PIPELINEBOT {
-    conda "conda-forge::python=3.12 conda-forge::pip=23.1.2"
+    conda "conda-forge::uv=0.4.18"
     
     publishDir "${params.output_dir}", mode: 'copy'
     
@@ -15,18 +15,20 @@ process RUN_PIPELINEBOT {
     
     script:
     def slurm_args = params.use_slurm ? buildSlurmArgs() : ""
+    def config_path = config_file.name != 'NO_FILE' ? config_file : "src/resource_executor/examples/pipeline_bioinformatics.yaml"
     """
     cd ${repo_dir}
     
-    # Set up Python path
-    export PYTHONPATH="\${PWD}/src:\${PWD}/src/resource_executor/examples:\${PWD}/src/tasks:\${PYTHONPATH:-}"
+    # Ensure uv environment is synced
+    uv sync --locked
     
-    # Install dependencies
-    pip install psutil>=7.2.2 pyyaml>=6.0.3
+    # Debug: Show what config file we're using
+    echo "Using config file: ${config_path}"
+    ls -la ${config_path} || echo "Config file not found at ${config_path}"
     
-    # Run the pipeline
-    python main.py \\
-        --config ${config_file} \\
+    # Run the pipeline using uv
+    uv run python main.py \\
+        --config ${config_path} \\
         --output pipeline_results.json \\
         --log pipeline.log \\
         --log-level ${params.log_level} \\
