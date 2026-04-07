@@ -10,6 +10,7 @@ This workflow automatically clones PipelineBot, sets up its `uv` environment, an
 - **Reproducible Environment** — Sets up the locked `uv` environment from PipelineBot's `uv.lock`
 - **Flexible Configuration** — Accepts a custom YAML config or falls back to the default bioinformatics pipeline config
 - **SLURM Pass-through** — Forwards all SLURM parameters to PipelineBot's `main.py --slurm` flags
+- **GPU Acceleration** — Supports `ParabricksAlignmentTask` for GPU-accelerated alignment via `aligner: parabricks` in the YAML config
 - **Output Management** — Publishes `pipeline_results.json` and `pipeline.log` to the specified output directory
 - **Modular Design** — Core steps are split into reusable modules under `modules/`
 
@@ -64,7 +65,7 @@ nextflow run main.nf \
 | `slurm_account` | `null` | SLURM project account |
 | `slurm_time_limit` | `04:00:00` | Wall-clock limit per job |
 | `slurm_mem_gb` | `null` | Memory per job (GB) |
-| `slurm_nodes` | `null` | Nodes per node |
+| `slurm_nodes` | `null` | Nodes per job |
 | `slurm_ntasks_per_node` | `null` | MPI tasks per node |
 | `slurm_work_dir` | `/tmp/pipeline_slurm` | Shared directory for SLURM job scripts and logs |
 | `slurm_python` | `python` | Python binary on compute nodes |
@@ -94,23 +95,94 @@ alignment:
   fastq_files:
     - sample1.fastq
     - sample2.fastq
-  aligner: bwa
+  fastq_r2_files:           # omit or leave empty for single-end
+    - sample1_R2.fastq
+    - sample2_R2.fastq
+  aligner: bwa              # options: bwa, bowtie2, star, minimap2, parabricks
   threads_per_sample: 4
+
+  # Parabricks (GPU) fields — required when aligner: parabricks
+  # container_path: /path/to/clara-parabricks.sif
+  # scratch_dir: /host/path/mounted/as/scratch  # bound to /scratch inside container
+
+  # Optional: submit each alignment job to SLURM instead of running locally.
+  # slurm_config:
+  #   partition: compute
+  #   nodes: 1
+  #   ntasks_per_node: 1
+  #   mem_gb: 8.0
+  #   time_limit: "02:00:00"
+  #   account: myproject
+  #   work_dir: /scratch/pipeline_jobs
+  #   gpu: h200:1            # GPU type:count, e.g. h200:1, h100:2, l40s:1
+  #   modules: ["cuda/13.0", "apptainer/1.1.9"]
+  #   extra_directives: ["--requeue"]
 
 variant_calling:
   resource_config:
     cpus: 8
     memory_gb: 16.0
-  caller: gatk
+    max_processes: 4
+    timeout_seconds: 3600
+  caller: gatk              # options: gatk, freebayes, samtools
+  bam_files: []             # leave empty to use BAM files from the alignment task
+
+  # slurm_config:
+  #   partition: compute
+  #   mem_gb: 16.0
+  #   time_limit: "04:00:00"
 
 rna_seq:
   resource_config:
     cpus: 6
     memory_gb: 12.0
-  quantification_method: salmon
+    max_processes: 3
+    timeout_seconds: 2400
+  quantification_method: salmon   # options: salmon, kallisto, featurecounts
+
+  # slurm_config:
+  #   partition: compute
+  #   mem_gb: 12.0
+  #   time_limit: "03:00:00"
 ```
 
+Tasks listed under `tasks:` are executed in order. Remove or reorder entries to run only a subset. When `variant_calling` follows `alignment`, BAM files are passed automatically.
+
+> **Note:** `slurm_config` blocks in the YAML are overridden when `--slurm` flags are passed on the command line.
+
 See the [PipelineBot README](https://github.com/huimingd/PipelineBot) for the full YAML reference and all supported tasks.
+
+## GPU-accelerated alignment with Parabricks
+
+Set `aligner: parabricks` in the YAML config to run `pbrun fq2bam` inside a Singularity container on a GPU node. The container is launched via `singularity exec --nv` with `scratch_dir` bound to `/scratch` inside the container. All input/output paths should be expressed relative to `/scratch`.
+
+```yaml
+executor:
+  reference_genome: /scratch/Genomes/hg38.fa   # path visible inside container
+  output_dir: /RUN/alignment                    # written inside container
+
+alignment:
+  aligner: parabricks
+  fastq_files:
+    - /scratch/sample_R1.fastq
+  fastq_r2_files:
+    - /scratch/sample_R2.fastq
+  container_path: /host/path/clara-parabricks.sif
+  scratch_dir: /host/path/to/scratch           # mounted as /scratch in container
+  slurm_config:
+    partition: gpu_partition
+    mem_gb: 64.0
+    time_limit: "06:00:00"
+    gpu: h200:1                                # or l40s:1, h100:2, etc.
+    modules: ["cuda/13.0.1", "apptainer/1.1.9"]
+    work_dir: /host/path/slurm_jobs
+```
+
+Pass this config via `--config_file`:
+
+```bash
+nextflow run main.nf --config_file /path/to/alignment_gpu.yaml
+```
 
 ## Workflow Structure
 
