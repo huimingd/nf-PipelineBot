@@ -11,8 +11,9 @@ This workflow automatically clones PipelineBot, sets up its `uv` environment, an
 - **Flexible Configuration** — Accepts a custom YAML config or falls back to the default bioinformatics pipeline config
 - **SLURM Pass-through** — Forwards all SLURM parameters to PipelineBot's `main.py --slurm` flags
 - **GPU Acceleration** — Supports `ParabricksAlignmentTask` for GPU-accelerated alignment via `aligner: parabricks` in the YAML config
-- **Output Management** — Publishes `pipeline_results.json` and `pipeline.log` to the specified output directory
+- **Output Management** — Publishes `pipeline_results.json` and `pipeline.log` plus execution reports (`pipeline_info/`) to the specified output directory
 - **Modular Design** — Core steps are split into reusable modules under `modules/`
+- **Wave + Conda Integration** — `nextflow.config` enables Wave with a Conda strategy for automatic software provisioning
 
 ## Requirements
 
@@ -70,6 +71,10 @@ nextflow run main.nf \
 | `slurm_work_dir` | `/tmp/pipeline_slurm` | Shared directory for SLURM job scripts and logs |
 | `slurm_python` | `python` | Python binary on compute nodes |
 | `slurm_poll_interval` | `10` | Seconds between `squeue` polls |
+| `reference_genome` | `null` | Path to reference genome (passed through to YAML config) |
+| `annotation_file` | `null` | Path to annotation GTF (passed through to YAML config) |
+| `fastq_files` | `[]` | List of input FASTQ files (passed through to YAML config) |
+| `bam_files` | `[]` | List of input BAM files (passed through to YAML config) |
 
 ## Pipeline Config YAML
 
@@ -198,7 +203,12 @@ RUN_PIPELINEBOT        (uv run python main.py ...)
         ▼
   results/
   ├── pipeline_results.json
-  └── pipeline.log
+  ├── pipeline.log
+  └── pipeline_info/
+      ├── execution_timeline.html
+      ├── execution_report.html
+      ├── execution_trace.txt
+      └── pipeline_dag.svg
 ```
 
 ### Modules
@@ -209,14 +219,29 @@ RUN_PIPELINEBOT        (uv run python main.py ...)
 | `modules/setup_uv_environment.nf` | Runs `uv sync --locked` to install locked dependencies |
 | `modules/run_pipelinebot.nf` | Executes `uv run python main.py` with all parameters |
 
+### Reporting
+
+`nextflow.config` enables four Nextflow reporting outputs, written to `results/pipeline_info/`:
+
+| File | Description |
+|------|-------------|
+| `execution_timeline.html` | Per-process wall-clock timeline |
+| `execution_report.html` | Resource usage report (CPU, memory, I/O) |
+| `execution_trace.txt` | Tab-separated trace of every task |
+| `pipeline_dag.svg` | Directed acyclic graph of the workflow |
+
+### Wave + Conda
+
+`nextflow.config` enables [Wave](https://seqera.io/wave/) with `strategy = ['conda']`. When `wave.enabled = true`, Nextflow can automatically build and cache container images from Conda environment definitions on processes that declare a `conda` directive — no manual container management required.
+
 ## Entry Points
 
 | File | Description |
 |------|-------------|
-| `main.nf` | Modular entry point using `include` from `modules/` and `workflows/` |
-| `main_single.nf` | Self-contained single-file workflow |
+| `main.nf` | Modular entry point — delegates to `workflows/pipelinebot.nf` which includes all three modules |
+| `main_single.nf` | Self-contained single-file workflow with no external module dependencies |
 
-Both entry points produce identical results. `main.nf` is the recommended entry point — its split module structure makes individual steps easier to reuse and maintain. `main_single.nf` is available as a self-contained alternative with no module dependencies.
+Both entry points produce identical results. `main.nf` is the recommended entry point — its split module structure makes individual steps easier to reuse and maintain. `main_single.nf` is available as a portable single-file alternative.
 
 ## License
 
